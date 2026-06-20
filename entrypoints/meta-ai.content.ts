@@ -2,11 +2,8 @@
  * CONTENT SCRIPT - corre DENTRO de la pagina de Meta AI.
  *
  * Escucha mensajes del panel de control y ejecuta la automatizacion completa
- * para UN video: subir imagen -> escribir prompt -> enviar -> esperar -> obtener.
- *
- * El orquestador (panel de control) llama a este content script una vez por
- * escena, de forma secuencial (uno tras otro), tal como se hace en el video
- * para no exceder los limites ocultos de Meta AI.
+ * para UN video: subir imagen -> escribir prompt -> enviar -> esperar -> obtener
+ * la URL del video. El panel se encarga de descargarlo y guardarlo.
  */
 import { defineContentScript } from 'wxt/utils/define-content-script';
 import { browser } from 'wxt/browser';
@@ -16,7 +13,6 @@ import {
   typePrompt,
   clickSend,
   waitForNewVideo,
-  fetchVideoAsDataUrl,
   dataUrlToFile,
   snapshotExistingVideos,
 } from '@/lib/dom-automation';
@@ -28,7 +24,6 @@ export default defineContentScript({
     console.log('[Meta Video Generator] content script cargado.');
 
     browser.runtime.onMessage.addListener(
-      // Devolver una Promise hace que la respuesta sea asincrona.
       async (message: RequestMessage): Promise<ResponseMessage> => {
         try {
           if (message.type === 'PING') {
@@ -38,7 +33,7 @@ export default defineContentScript({
           if (message.type === 'GENERATE_VIDEO') {
             const { prompt, imageDataUrl, imageName } = message;
 
-            // 0) Foto del estado actual: que videos ya existen en la pagina.
+            // 0) Que videos ya existen ANTES de enviar (para detectar el nuevo).
             const before = snapshotExistingVideos();
 
             // 1) Subir la imagen de referencia.
@@ -51,13 +46,10 @@ export default defineContentScript({
             // 3) Enviar.
             await clickSend();
 
-            // 4) Esperar a que aparezca el NUEVO video (puede tardar minutos).
+            // 4) Esperar a que aparezca el NUEVO video y obtener su URL.
             const videoUrl = await waitForNewVideo(before);
 
-            // 5) Descargar el video y devolverlo al panel para guardarlo.
-            const { dataUrl, mimeType } = await fetchVideoAsDataUrl(videoUrl);
-
-            return { ok: true, type: 'VIDEO_READY', videoDataUrl: dataUrl, mimeType };
+            return { ok: true, type: 'VIDEO_READY', videoUrl };
           }
 
           return { ok: false, error: 'Mensaje no reconocido.' };
