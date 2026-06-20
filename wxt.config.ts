@@ -16,8 +16,10 @@ export default defineConfig({
     // - storage: para guardar el progreso/estado de la cola.
     permissions: ['tabs', 'storage'],
 
-    // Permite a la extension actuar sobre el dominio de Meta AI.
-    // Si Meta cambia su dominio, actualiza estos patrones.
-    host_permissions: ['*://*.meta.ai/*'],
+    // Permite a la extension actuar sobre el dominio de Meta AI y descargar
+    // los videos generados (Meta los sirve desde *.fbcdn.net). El permiso de
+    // host evita errores de CORS al descargar el mp4 desde el panel.
+    // Si Meta cambia sus dominios, actualiza estos patrones.
+    host_permissions: ['*://*.meta.ai/*', '*://*.fbcdn.net/*'],
   },
 });

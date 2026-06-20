@@ -10,55 +10,56 @@
  * >>> Estos selectores SON FRAGILES: si Meta actualiza su web, dejaran de
  *     funcionar y tendras que actualizarlos aqui (y SOLO aqui).
  *
- * COMO ACTUALIZARLOS (igual que en el video):
+ * COMO ACTUALIZARLOS:
  *   1. Abre https://www.meta.ai/ e inicia sesion.
- *   2. Abre las DevTools (F12) y usa la herramienta de seleccion (Ctrl+Shift+C).
- *   3. Haz clic sobre el boton/campo que te interesa (subir archivo, input del
- *      chat, boton enviar, el video generado).
- *   4. Mira el HTML resaltado y copia un selector estable (id, aria-label,
- *      data-*, etc.). Evita clases ofuscadas tipo "x1y2z3" porque cambian.
- *   5. Pega el selector aqui.
+ *   2. Abre las DevTools (F12) -> pestana Console.
+ *   3. Pega el comando de diagnostico (lista videos, inputs y aria-labels).
+ *   4. Copia los nombres/atributos exactos y pegalos aqui.
  *
  * Cada campo acepta VARIOS selectores separados por coma: se probaran en orden
  * y se usara el primero que exista en la pagina.
+ *
+ * (Valores confirmados inspeccionando meta.ai en 2026.)
  */
 export const META_AI_SELECTORS = {
   /**
    * Input <input type="file"> donde se sube la imagen.
-   * Normalmente esta oculto y se activa con un boton (ver uploadButton).
+   * Preferimos el que acepta video (es el del compositor del chat).
    */
-  fileInput: 'input[type="file"]',
+  fileInput: 'input[type="file"][accept*="video"], input[type="file"]',
 
   /**
    * Boton que abre el selector de archivos / adjuntar imagen.
-   * Solo se usa si el fileInput no esta visible directamente.
+   * En meta.ai su aria-label es exactamente "Añadir archivo adjunto".
    */
   uploadButton:
-    '[aria-label*="Attach" i], [aria-label*="Adjuntar" i], [aria-label*="image" i], [aria-label*="media" i]',
+    '[aria-label="Añadir archivo adjunto"], [aria-label*="adjunto" i], [aria-label*="Attach" i]',
 
   /**
-   * Campo donde se escribe el prompt. Puede ser un <textarea> o un
-   * <div contenteditable="true">. El codigo soporta ambos.
+   * Campo donde se escribe el prompt (editor enriquecido contenteditable).
    */
   promptInput:
-    'textarea[placeholder], div[contenteditable="true"], textarea',
+    'div[contenteditable="true"], textarea[placeholder], textarea',
 
   /**
-   * Boton de enviar el mensaje/prompt.
+   * Boton de enviar. En meta.ai su aria-label es exactamente "Enviar".
    */
-  sendButton:
-    '[aria-label*="Send" i], [aria-label*="Enviar" i], button[type="submit"]',
+  sendButton: '[aria-label="Enviar"], [aria-label*="Send" i], button[type="submit"]',
 
   /**
-   * Elemento <video> donde aparece el video generado.
-   * Cuando el src tenga una URL valida, asumimos que el video esta listo.
+   * Elemento <video> con el video generado. En meta.ai el video final
+   * tiene un src que apunta a fbcdn.net (mp4 descargable).
    */
   videoElement: 'video',
 
   /**
-   * (Opcional) Selector de un indicador de "generando..." (spinner, texto).
-   * Si lo defines, la espera tambien comprobara que este indicador desaparezca
-   * antes de dar por listo el video. Dejalo vacio si no lo necesitas.
+   * Boton de descarga que aparece junto al video terminado.
+   * Sirve como senal adicional de que la generacion ha finalizado.
+   */
+  downloadButton: '[aria-label="Descargar"]',
+
+  /**
+   * (Opcional) Indicador de "generando...". Dejar vacio si no se usa.
    */
   generatingIndicator: '',
 } as const;
@@ -72,7 +73,7 @@ export const TIMING = {
   /** Intervalo de sondeo mientras esperamos el video. */
   pollIntervalMs: 2000,
   /** Pausa tras subir la imagen, para que la web la procese. */
-  afterUploadMs: 1500,
+  afterUploadMs: 2000,
   /** Pausa tras escribir el prompt, antes de enviar. */
-  afterTypeMs: 400,
+  afterTypeMs: 500,
 } as const;

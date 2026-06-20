@@ -6,8 +6,7 @@
  *   - Leer el project.json y las imagenes de referencia.
  *   - Crear la subcarpeta "videos" y guardar ahi los videos generados.
  *
- * Nota: esta API solo esta disponible en navegadores basados en Chromium
- * (Chrome, Edge, Brave...). Es la misma que usa el video.
+ * Nota: esta API solo esta disponible en navegadores basados en Chromium.
  */
 import type { ProjectFile } from './types';
 
@@ -59,26 +58,16 @@ export async function readImageAsDataUrl(
   return fileToDataUrl(file);
 }
 
-/** Convierte un data URL en Blob. */
-export function dataUrlToBlob(dataUrl: string): Blob {
-  const [meta, base64] = dataUrl.split(',');
-  const mime = /data:(.*?);base64/.exec(meta)?.[1] ?? 'application/octet-stream';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-}
-
-/** Guarda un video (data URL) en la subcarpeta de salida y devuelve el nombre usado. */
-export async function saveVideo(
+/** Guarda un Blob de video en la subcarpeta de salida y devuelve el nombre usado. */
+export async function saveVideoBlob(
   dir: FileSystemDirectoryHandle,
   filename: string,
-  videoDataUrl: string,
+  blob: Blob,
 ): Promise<string> {
   const outDir = await dir.getDirectoryHandle(OUTPUT_DIR_NAME, { create: true });
   const fileHandle = await outDir.getFileHandle(filename, { create: true });
   const writable = await fileHandle.createWritable();
-  await writable.write(dataUrlToBlob(videoDataUrl));
+  await writable.write(blob);
   await writable.close();
   return filename;
 }

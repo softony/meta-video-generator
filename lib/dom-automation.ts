@@ -17,9 +17,6 @@ function queryFirst<T extends Element = HTMLElement>(
   selectorList: string,
 ): T | null {
   if (!selectorList) return null;
-  // querySelector ya soporta varios selectores separados por coma y devuelve
-  // el primero del documento; pero recorremos a mano para respetar el ORDEN
-  // de prioridad que definimos en selectors.ts.
   for (const sel of selectorList.split(',').map((s) => s.trim())) {
     if (!sel) continue;
     const el = document.querySelector<T>(sel);
@@ -53,14 +50,31 @@ export function dataUrlToFile(dataUrl: string, filename: string): File {
   return new File([bytes], filename, { type: mime });
 }
 
-/** Convierte un Blob en un data URL (base64). */
-export function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
+/**
+ * Devuelve una "clave estable" de una URL de video: origen + ruta, SIN los
+ * parametros de consulta. Meta AI cambia parametros firmados (_nc_ohc, oh, oe...)
+ * en cada render, asi que comparar la URL completa daria falsos positivos.
+ * La ruta del archivo .mp4 si es estable e identifica al video de forma unica.
+ */
+function stableVideoKey(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return url;
+  }
+}
+
+/** Devuelve la URL "real" de un elemento <video> (src, currentSrc o <source>). */
+function videoUrlOf(v: HTMLVideoElement): string {
+  return v.currentSrc || v.src || v.querySelector('source')?.src || '';
+}
+
+/** ¿La URL parece un video final descargable de Meta (mp4 en fbcdn)? */
+function looksLikeFinalVideo(url: string): boolean {
+  if (!url) return false;
+  if (url.startsWith('blob:')) return false; // aun no es la URL final descargable
+  return url.includes('.mp4') || url.includes('fbcdn');
 }
 
 /**
@@ -80,12 +94,12 @@ export async function uploadImage(file: File): Promise<void> {
   // Intentamos encontrar el input de archivo directamente.
   let input = queryFirst<HTMLInputElement>(META_AI_SELECTORS.fileInput);
 
-  // Si no esta presente, puede que aparezca tras pulsar el boton de adjuntar.
+  // Si no esta presente, lo revelamos pulsando el boton "Añadir archivo adjunto".
   if (!input) {
     const btn = queryFirst<HTMLElement>(META_AI_SELECTORS.uploadButton);
     if (btn) {
       btn.click();
-      await sleep(500);
+      await sleep(600);
     }
     input = await waitForElement<HTMLInputElement>(META_AI_SELECTORS.fileInput);
   }
@@ -96,7 +110,6 @@ export async function uploadImage(file: File): Promise<void> {
 
 /**
  * Escribe texto en un input nativo (textarea/input) saltando el setter de React.
- * React intercepta el setter de "value", por eso usamos el setter del prototipo.
  */
 function setNativeInputValue(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto =
@@ -108,7 +121,7 @@ function setNativeInputValue(el: HTMLInputElement | HTMLTextAreaElement, value: 
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-/** PASO 2: escribir el prompt en el campo del chat (textarea o contenteditable). */
+/** PASO 2: escribir el prompt en el campo del chat (contenteditable o textarea). */
 export async function typePrompt(prompt: string): Promise<void> {
   const field = await waitForElement<HTMLElement>(META_AI_SELECTORS.promptInput);
   field.focus();
@@ -116,10 +129,9 @@ export async function typePrompt(prompt: string): Promise<void> {
   if (field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) {
     setNativeInputValue(field, prompt);
   } else {
-    // Caso contenteditable.
+    // Caso contenteditable (editor enriquecido tipo Lexical).
     field.textContent = '';
     document.execCommand('insertText', false, prompt);
-    // Respaldo por si execCommand esta deshabilitado.
     if (!field.textContent) {
       field.textContent = prompt;
       field.dispatchEvent(new InputEvent('input', { bubbles: true, data: prompt }));
@@ -131,7 +143,6 @@ export async function typePrompt(prompt: string): Promise<void> {
 /** PASO 3: hacer clic en el boton de enviar. */
 export async function clickSend(): Promise<void> {
   const btn = await waitForElement<HTMLButtonElement>(META_AI_SELECTORS.sendButton);
-  // Esperamos a que el boton este habilitado.
   const start = Date.now();
   while (btn.disabled && Date.now() - start < 5000) {
     await sleep(150);
@@ -139,61 +150,39 @@ export async function clickSend(): Promise<void> {
   btn.click();
 }
 
-/** Devuelve el conjunto de URLs de video presentes ahora mismo en la pagina. */
-function currentVideoSrcs(): Set<string> {
+/** Devuelve el conjunto de claves estables de los videos presentes ahora mismo. */
+export function snapshotExistingVideos(): Set<string> {
   const set = new Set<string>();
-  document.querySelectorAll<HTMLVideoElement>(META_AI_SELECTORS.videoElement).forEach((v) => {
-    const src = v.currentSrc || v.src || v.querySelector('source')?.src || '';
-    if (src) set.add(src);
-  });
+  document
+    .querySelectorAll<HTMLVideoElement>(META_AI_SELECTORS.videoElement)
+    .forEach((v) => {
+      const url = videoUrlOf(v);
+      if (url) set.add(stableVideoKey(url));
+    });
   return set;
 }
 
 /**
- * PASO 4: esperar a que aparezca un NUEVO video y devolver su URL.
+ * PASO 4: esperar a que aparezca un NUEVO video final y devolver su URL.
  *
- * Estrategia: guardamos las URLs de video existentes ANTES de enviar el prompt;
- * luego sondeamos hasta que aparezca una URL nueva (el video recien generado).
+ * Comparamos por "clave estable" (ruta sin parametros) contra los videos que
+ * ya existian antes de enviar, y exigimos que parezca un mp4 final de fbcdn.
  */
-export async function waitForNewVideo(previousSrcs: Set<string>): Promise<string> {
+export async function waitForNewVideo(previousKeys: Set<string>): Promise<string> {
   const start = Date.now();
 
   while (Date.now() - start < TIMING.videoTimeoutMs) {
-    // Si hay un indicador de "generando", esperamos a que desaparezca.
-    if (META_AI_SELECTORS.generatingIndicator) {
-      const spinner = queryFirst(META_AI_SELECTORS.generatingIndicator);
-      if (spinner) {
-        await sleep(TIMING.pollIntervalMs);
-        continue;
-      }
-    }
-
     const videos = document.querySelectorAll<HTMLVideoElement>(
       META_AI_SELECTORS.videoElement,
     );
     for (const v of Array.from(videos)) {
-      const src = v.currentSrc || v.src || v.querySelector('source')?.src || '';
-      if (src && !previousSrcs.has(src)) {
-        return src;
+      const url = videoUrlOf(v);
+      if (url && looksLikeFinalVideo(url) && !previousKeys.has(stableVideoKey(url))) {
+        return url;
       }
     }
-
     await sleep(TIMING.pollIntervalMs);
   }
 
   throw new Error('Se agoto el tiempo de espera esperando el video generado.');
 }
-
-/** Descarga el video desde su URL y lo devuelve como data URL para transferirlo. */
-export async function fetchVideoAsDataUrl(
-  url: string,
-): Promise<{ dataUrl: string; mimeType: string }> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Error al descargar el video (HTTP ${res.status}).`);
-  const blob = await res.blob();
-  const dataUrl = await blobToDataUrl(blob);
-  return { dataUrl, mimeType: blob.type || 'video/mp4' };
-}
-
-/** Capturar las URLs de video ANTES de enviar (para detectar el nuevo). */
-export const snapshotExistingVideos = currentVideoSrcs;

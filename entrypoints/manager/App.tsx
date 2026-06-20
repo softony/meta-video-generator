@@ -4,10 +4,10 @@ import {
   pickProjectDirectory,
   readProjectFile,
   readImageAsDataUrl,
-  saveVideo,
+  saveVideoBlob,
   extensionForMime,
 } from '@/lib/file-system';
-import { ensureMetaTab, requestVideo } from '@/lib/meta-tab';
+import { ensureMetaTab, navigateToNewChat, requestVideo } from '@/lib/meta-tab';
 
 export function App() {
   const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null);
@@ -63,10 +63,13 @@ export function App() {
         updateItem(item.index, { status: 'generating', error: undefined });
 
         try {
+          // Cada escena empieza en un chat nuevo (limpio).
+          await navigateToNewChat(tabId);
+
           // Leer la imagen de referencia de la escena.
           const imageDataUrl = await readImageAsDataUrl(dir, item.imageName);
 
-          // Pedir al content script que genere el video y esperar el resultado.
+          // Pedir al content script que genere el video y esperar su URL.
           const res = await requestVideo(tabId, {
             prompt: item.prompt,
             imageDataUrl,
@@ -76,11 +79,18 @@ export function App() {
           if (!res.ok) throw new Error(res.error);
           if (res.type !== 'VIDEO_READY') throw new Error('Respuesta inesperada.');
 
+          // Descargar el video desde su URL (la extension tiene permiso para fbcdn).
+          const resp = await fetch(res.videoUrl);
+          if (!resp.ok) {
+            throw new Error(`No se pudo descargar el video (HTTP ${resp.status}).`);
+          }
+          const blob = await resp.blob();
+
           // Guardar el video en la subcarpeta de salida.
-          const ext = extensionForMime(res.mimeType);
+          const ext = extensionForMime(blob.type || 'video/mp4');
           const num = String(item.index + 1).padStart(2, '0');
           const filename = `${num}_${item.sceneId}.${ext}`;
-          await saveVideo(dir, filename, res.videoDataUrl);
+          await saveVideoBlob(dir, filename, blob);
 
           updateItem(item.index, { status: 'downloaded', outputName: filename });
         } catch (err) {

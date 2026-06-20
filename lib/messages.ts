@@ -3,7 +3,7 @@
  * que corre dentro de la pagina de Meta AI.
  *
  * El panel envia una peticion -> el content script ejecuta la automatizacion ->
- * devuelve el resultado (video listo o error).
+ * devuelve el resultado (la URL del video listo, o un error).
  */
 
 /** Verifica que el content script este cargado en la pestana de Meta AI. */
@@ -27,5 +27,7 @@ export type RequestMessage = PingMessage | GenerateVideoMessage;
 /** Respuesta del content script. */
 export type ResponseMessage =
   | { ok: true; type: 'PONG' }
-  | { ok: true; type: 'VIDEO_READY'; videoDataUrl: string; mimeType: string }
+  // Devolvemos la URL del video (mp4 en fbcdn.net). El panel la descarga
+  // directamente (la extension tiene permiso de host para fbcdn.net).
+  | { ok: true; type: 'VIDEO_READY'; videoUrl: string }
   | { ok: false; error: string };
