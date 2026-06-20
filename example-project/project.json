@@ -1,0 +1,20 @@
+{
+  "title": "Proyecto de ejemplo - Amanecer en la ciudad",
+  "scenes": [
+    {
+      "id": "scene-1",
+      "prompt": "Plano aereo cinematografico de una ciudad al amanecer, niebla suave entre los edificios, luz dorada, camara avanzando lentamente hacia adelante.",
+      "image": "scene-1.png"
+    },
+    {
+      "id": "scene-2",
+      "prompt": "Primer plano de una taza de cafe humeante sobre una mesa de madera junto a una ventana, vapor subiendo, luz matutina calida, profundidad de campo.",
+      "image": "scene-2.png"
+    },
+    {
+      "id": "scene-3",
+      "prompt": "Calle de la ciudad cobrando vida: personas caminando, autos pasando, reflejos en los charcos, movimiento de camara tipo travelling lateral.",
+      "image": "scene-3.png"
+    }
+  ]
+}
