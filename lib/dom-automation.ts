@@ -2,12 +2,14 @@
  * Funciones de automatizacion del DOM de Meta AI.
  *
  * Estas funciones son "las manos" de la extension: hacen exactamente lo que
- * harias a mano -> subir una imagen, escribir el prompt, hacer clic en enviar,
- * esperar a que el video se genere y obtener su URL.
+ * harias a mano -> empezar un chat nuevo, subir una imagen, escribir el prompt,
+ * hacer clic en enviar, esperar a que el video se genere y obtener su URL.
  *
  * Se ejecutan dentro del content script (tienen acceso al DOM de la pagina).
  */
 import { META_AI_SELECTORS, TIMING } from './selectors';
+
+const LOG = '[Meta Video Generator]';
 
 /** Espera la cantidad de milisegundos indicada. */
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -52,9 +54,7 @@ export function dataUrlToFile(dataUrl: string, filename: string): File {
 
 /**
  * Devuelve una "clave estable" de una URL de video: origen + ruta, SIN los
- * parametros de consulta. Meta AI cambia parametros firmados (_nc_ohc, oh, oe...)
- * en cada render, asi que comparar la URL completa daria falsos positivos.
- * La ruta del archivo .mp4 si es estable e identifica al video de forma unica.
+ * parametros de consulta (Meta cambia parametros firmados en cada render).
  */
 function stableVideoKey(url: string): string {
   try {
@@ -78,8 +78,39 @@ function looksLikeFinalVideo(url: string): boolean {
 }
 
 /**
+ * PASO 0: empezar un chat NUEVO sin recargar la pagina (navegacion interna).
+ * Esto mantiene vivo el content script (evita el error "message channel closed")
+ * y deja la escena limpia, con el boton de adjuntar disponible.
+ */
+export async function startNewChat(): Promise<void> {
+  let btn = queryFirst<HTMLElement>(META_AI_SELECTORS.newChatButton);
+
+  // Respaldo: buscar por texto "Nuevo chat" entre elementos clicables.
+  if (!btn) {
+    const clickable = document.querySelectorAll<HTMLElement>(
+      'a, button, [role="button"]',
+    );
+    for (const el of Array.from(clickable)) {
+      const label = (el.getAttribute('aria-label') ?? '').trim();
+      const txt = (el.textContent ?? '').trim();
+      if (label === 'Nuevo chat' || txt.startsWith('Nuevo chat')) {
+        btn = el;
+        break;
+      }
+    }
+  }
+
+  if (btn) {
+    console.log(`${LOG} Iniciando chat nuevo.`);
+    btn.click();
+    await sleep(TIMING.afterNewChatMs);
+  } else {
+    console.warn(`${LOG} No se encontro "Nuevo chat"; sigo en el chat actual.`);
+  }
+}
+
+/**
  * Asigna un archivo a un <input type="file"> simulando la seleccion del usuario.
- * Usa DataTransfer porque input.files es de solo lectura por seguridad.
  */
 function assignFileToInput(input: HTMLInputElement, file: File) {
   const dt = new DataTransfer();
@@ -91,26 +122,25 @@ function assignFileToInput(input: HTMLInputElement, file: File) {
 
 /** PASO 1: subir la imagen de referencia. */
 export async function uploadImage(file: File): Promise<void> {
-  // Intentamos encontrar el input de archivo directamente.
   let input = queryFirst<HTMLInputElement>(META_AI_SELECTORS.fileInput);
 
-  // Si no esta presente, lo revelamos pulsando el boton "Añadir archivo adjunto".
+  // Si no esta presente, lo revelamos pulsando "Añadir archivo adjunto".
   if (!input) {
     const btn = queryFirst<HTMLElement>(META_AI_SELECTORS.uploadButton);
     if (btn) {
+      console.log(`${LOG} Abriendo el selector de archivos.`);
       btn.click();
       await sleep(600);
     }
     input = await waitForElement<HTMLInputElement>(META_AI_SELECTORS.fileInput);
   }
 
+  console.log(`${LOG} Subiendo imagen "${file.name}".`);
   assignFileToInput(input, file);
   await sleep(TIMING.afterUploadMs);
 }
 
-/**
- * Escribe texto en un input nativo (textarea/input) saltando el setter de React.
- */
+/** Escribe texto en un input nativo (textarea/input) saltando el setter de React. */
 function setNativeInputValue(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto =
     el instanceof HTMLTextAreaElement
@@ -137,6 +167,7 @@ export async function typePrompt(prompt: string): Promise<void> {
       field.dispatchEvent(new InputEvent('input', { bubbles: true, data: prompt }));
     }
   }
+  console.log(`${LOG} Prompt escrito.`);
   await sleep(TIMING.afterTypeMs);
 }
 
@@ -147,6 +178,7 @@ export async function clickSend(): Promise<void> {
   while (btn.disabled && Date.now() - start < 5000) {
     await sleep(150);
   }
+  console.log(`${LOG} Enviando.`);
   btn.click();
 }
 
@@ -167,20 +199,44 @@ export function snapshotExistingVideos(): Set<string> {
  *
  * Comparamos por "clave estable" (ruta sin parametros) contra los videos que
  * ya existian antes de enviar, y exigimos que parezca un mp4 final de fbcdn.
+ * Si un <video> aparece sin src (aun no cargado), forzamos su carga con load().
  */
 export async function waitForNewVideo(previousKeys: Set<string>): Promise<string> {
   const start = Date.now();
+  const loadAttempted = new WeakSet<HTMLVideoElement>();
+  let lastLogged = 0;
 
   while (Date.now() - start < TIMING.videoTimeoutMs) {
-    const videos = document.querySelectorAll<HTMLVideoElement>(
-      META_AI_SELECTORS.videoElement,
+    const videos = Array.from(
+      document.querySelectorAll<HTMLVideoElement>(META_AI_SELECTORS.videoElement),
     );
-    for (const v of Array.from(videos)) {
-      const url = videoUrlOf(v);
+
+    for (const v of videos) {
+      let url = videoUrlOf(v);
+      if (!url && !loadAttempted.has(v)) {
+        // El elemento existe pero aun no expone su URL: intentamos cargarlo.
+        loadAttempted.add(v);
+        try {
+          v.load();
+        } catch {
+          /* ignorar */
+        }
+      }
       if (url && looksLikeFinalVideo(url) && !previousKeys.has(stableVideoKey(url))) {
+        console.log(`${LOG} Video listo: ${url.slice(0, 80)}...`);
         return url;
       }
     }
+
+    // Log de progreso cada ~20s para poder diagnosticar si algo falla.
+    const elapsed = Date.now() - start;
+    if (elapsed - lastLogged > 20000) {
+      lastLogged = elapsed;
+      console.log(
+        `${LOG} Esperando video... (${Math.round(elapsed / 1000)}s, ${videos.length} <video> en pagina)`,
+      );
+    }
+
     await sleep(TIMING.pollIntervalMs);
   }
 

@@ -2,13 +2,14 @@
  * CONTENT SCRIPT - corre DENTRO de la pagina de Meta AI.
  *
  * Escucha mensajes del panel de control y ejecuta la automatizacion completa
- * para UN video: subir imagen -> escribir prompt -> enviar -> esperar -> obtener
- * la URL del video. El panel se encarga de descargarlo y guardarlo.
+ * para UN video: chat nuevo -> subir imagen -> escribir prompt -> enviar ->
+ * esperar -> obtener la URL del video. El panel lo descarga y lo guarda.
  */
 import { defineContentScript } from 'wxt/utils/define-content-script';
 import { browser } from 'wxt/browser';
 import type { RequestMessage, ResponseMessage } from '@/lib/messages';
 import {
+  startNewChat,
   uploadImage,
   typePrompt,
   clickSend,
@@ -33,14 +34,17 @@ export default defineContentScript({
           if (message.type === 'GENERATE_VIDEO') {
             const { prompt, imageDataUrl, imageName } = message;
 
-            // 0) Que videos ya existen ANTES de enviar (para detectar el nuevo).
+            // 0) Empezar un chat nuevo (sin recargar la pagina).
+            await startNewChat();
+
+            // Que videos ya existen ANTES de enviar (para detectar el nuevo).
             const before = snapshotExistingVideos();
 
             // 1) Subir la imagen de referencia.
             const file = dataUrlToFile(imageDataUrl, imageName);
             await uploadImage(file);
 
-            // 2) Escribir el prompt.
+            // 2) Escribir el prompt (ya incluye la instruccion de animar).
             await typePrompt(prompt);
 
             // 3) Enviar.

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ProjectFile, QueueItem } from '@/lib/types';
+import { DEFAULT_PROMPT_PREFIX } from '@/lib/types';
 import {
   pickProjectDirectory,
   readProjectFile,
@@ -7,7 +8,7 @@ import {
   saveVideoBlob,
   extensionForMime,
 } from '@/lib/file-system';
-import { ensureMetaTab, navigateToNewChat, requestVideo } from '@/lib/meta-tab';
+import { ensureMetaTab, requestVideo } from '@/lib/meta-tab';
 
 export function App() {
   const [dir, setDir] = useState<FileSystemDirectoryHandle | null>(null);
@@ -58,20 +59,27 @@ export function App() {
     try {
       const tabId = await ensureMetaTab();
 
+      // Instruccion que garantiza que Meta AI genere un VIDEO (no una imagen).
+      const prefix =
+        project?.promptPrefix !== undefined
+          ? project.promptPrefix
+          : DEFAULT_PROMPT_PREFIX;
+
       for (const item of queue) {
         if (item.status === 'downloaded') continue;
         updateItem(item.index, { status: 'generating', error: undefined });
 
         try {
-          // Cada escena empieza en un chat nuevo (limpio).
-          await navigateToNewChat(tabId);
-
           // Leer la imagen de referencia de la escena.
           const imageDataUrl = await readImageAsDataUrl(dir, item.imageName);
 
+          // Combinar el prefijo de animacion con el prompt de la escena.
+          const finalPrompt = prefix ? `${prefix} ${item.prompt}` : item.prompt;
+
           // Pedir al content script que genere el video y esperar su URL.
+          // (El content script abre un chat nuevo por su cuenta.)
           const res = await requestVideo(tabId, {
-            prompt: item.prompt,
+            prompt: finalPrompt,
             imageDataUrl,
             imageName: item.imageName,
           });

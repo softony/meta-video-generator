@@ -59,6 +59,13 @@ export const META_AI_SELECTORS = {
   downloadButton: '[aria-label="Descargar"]',
 
   /**
+   * Boton "Nuevo chat" de la barra lateral. Se usa para empezar cada escena
+   * en un chat limpio SIN recargar la pagina (navegacion interna de la SPA).
+   * Como no expone aria-label fiable, el codigo tambien lo busca por texto.
+   */
+  newChatButton: '[aria-label="Nuevo chat"]',
+
+  /**
    * (Opcional) Indicador de "generando...". Dejar vacio si no se usa.
    */
   generatingIndicator: '',
@@ -68,12 +75,14 @@ export const META_AI_SELECTORS = {
  * Tiempos de espera (en milisegundos). Ajustables segun lo que tarde Meta AI.
  */
 export const TIMING = {
-  /** Tiempo maximo de espera por un video (la generacion puede tardar minutos). */
-  videoTimeoutMs: 10 * 60 * 1000, // 10 minutos
+  /** Tiempo maximo de espera por un video (la generacion suele tardar 1-3 min). */
+  videoTimeoutMs: 6 * 60 * 1000, // 6 minutos
   /** Intervalo de sondeo mientras esperamos el video. */
   pollIntervalMs: 2000,
   /** Pausa tras subir la imagen, para que la web la procese. */
   afterUploadMs: 2000,
   /** Pausa tras escribir el prompt, antes de enviar. */
   afterTypeMs: 500,
+  /** Pausa tras pulsar "Nuevo chat". */
+  afterNewChatMs: 1500,
 } as const;
