@@ -1,6 +1,9 @@
 /**
- * Helpers para encontrar (o abrir) la pestana de Meta AI, llevarla a un chat
- * nuevo por cada escena y enviarle mensajes al content script.
+ * Helpers para encontrar (o abrir) la pestana de Meta AI y enviarle mensajes
+ * al content script.
+ *
+ * Nota: el "chat nuevo" por escena se hace DENTRO del content script (sin
+ * recargar la pagina), para no romper la comunicacion con el panel.
  */
 import { browser } from 'wxt/browser';
 import type { GenerateVideoMessage, ResponseMessage } from './messages';
@@ -25,16 +28,6 @@ async function waitForContentScript(tabId: number, timeoutMs = 25000): Promise<v
   throw new Error('La pestana de Meta AI no respondio. ¿Iniciaste sesion en meta.ai?');
 }
 
-/** Espera a que la pestana termine de cargar (status "complete"). */
-async function waitForTabComplete(tabId: number, timeoutMs = 30000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const tab = await browser.tabs.get(tabId);
-    if (tab.status === 'complete' && (tab.url ?? '').includes('meta.ai')) return;
-    await sleep(300);
-  }
-}
-
 /**
  * Devuelve una pestana de Meta AI lista para recibir ordenes.
  * Si no hay ninguna abierta, abre una nueva.
@@ -50,18 +43,6 @@ export async function ensureMetaTab(): Promise<number> {
 
   await waitForContentScript(tabId);
   return tabId;
-}
-
-/**
- * Lleva la pestana a un CHAT NUEVO (la raiz de meta.ai). Asi cada escena
- * empieza limpia, con el boton de adjuntar disponible, igual que la primera.
- */
-export async function navigateToNewChat(tabId: number): Promise<void> {
-  await browser.tabs.update(tabId, { url: META_AI_URL });
-  await waitForTabComplete(tabId);
-  // Pequena pausa para que la SPA hidrate antes de inyectar de nuevo.
-  await sleep(1200);
-  await waitForContentScript(tabId);
 }
 
 /** Envia una peticion de generacion a la pestana de Meta AI y espera el resultado. */

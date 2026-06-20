@@ -1,19 +1,20 @@
 {
   "title": "Proyecto de ejemplo - Amanecer en la ciudad",
+  "promptPrefix": "Anima esta imagen y conviertela en un video.",
   "scenes": [
     {
       "id": "scene-1",
-      "prompt": "Plano aereo cinematografico de una ciudad al amanecer, niebla suave entre los edificios, luz dorada, camara avanzando lentamente hacia adelante.",
+      "prompt": "Movimiento de camara aereo avanzando lentamente hacia adelante sobre la ciudad al amanecer, niebla suave entre los edificios desplazandose, luz dorada.",
       "image": "scene-1.png"
     },
     {
       "id": "scene-2",
-      "prompt": "Primer plano de una taza de cafe humeante sobre una mesa de madera junto a una ventana, vapor subiendo, luz matutina calida, profundidad de campo.",
+      "prompt": "El vapor de la taza de cafe sube suavemente, ligero movimiento de camara acercandose, luz matutina calida parpadeando.",
       "image": "scene-2.png"
     },
     {
       "id": "scene-3",
-      "prompt": "Calle de la ciudad cobrando vida: personas caminando, autos pasando, reflejos en los charcos, movimiento de camara tipo travelling lateral.",
+      "prompt": "La calle cobra vida: personas caminando, autos pasando, reflejos moviendose en los charcos, travelling lateral suave de la camara.",
       "image": "scene-3.png"
     }
   ]
